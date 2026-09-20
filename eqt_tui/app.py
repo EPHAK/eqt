@@ -253,6 +253,12 @@ class EqtApp(App):
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="eqt -- graphic equalizer TUI on EasyEffects (run with no arguments for the interactive UI)"
+    )
+    parser.parse_args()  # no real flags yet; this just makes -h/--help behave instead of launching the TUI
     EqtApp().run()
 
 
