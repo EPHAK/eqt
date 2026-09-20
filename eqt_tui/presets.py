@@ -37,6 +37,11 @@ GAIN_MIN, GAIN_MAX = -24.0, 24.0
 
 EQUALIZER_INSTANCE = "equalizer#0"
 
+# Dedicated slot for continuous live editing, distinct from any named,
+# explicitly-saved preset. Live adjustments always write here, never to
+# a named preset file, so experimenting can never overwrite a save.
+LIVE_PRESET_NAME = "_eqt_live"
+
 
 @dataclass
 class Band:
@@ -100,9 +105,14 @@ def load_preset_from_file(name: str, channel: str = "output") -> list[Band]:
     return bands
 
 
+def preset_exists(name: str, channel: str = "output") -> bool:
+    return (preset_dir(channel) / f"{name}.json").exists()
+
+
 def list_presets(channel: str = "output") -> list[str]:
+    """Named, user-saved presets only -- excludes the internal live slot."""
     d = preset_dir(channel)
-    return sorted(p.stem for p in d.glob("*.json"))
+    return sorted(p.stem for p in d.glob("*.json") if p.stem != LIVE_PRESET_NAME)
 
 
 def delete_preset(name: str, channel: str = "output") -> None:

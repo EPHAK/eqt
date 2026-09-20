@@ -23,14 +23,23 @@ def _freq_label(f: float) -> str:
 
 
 class NameModal(ModalScreen[str | None]):
-    def __init__(self, title: str):
+    def __init__(self, title: str, default: str = ""):
         super().__init__()
         self.title_text = title
+        self.default = default
 
     def compose(self) -> ComposeResult:
         with Vertical(id="name-box"):
             yield Label(self.title_text)
-            yield Input(id="name-input")
+            yield Input(id="name-input", value=self.default)
+
+    def on_mount(self) -> None:
+        input_widget = self.query_one(Input)
+        input_widget.focus()
+        # Pre-filled text starts selected, "Save As"-dialog style: Enter
+        # alone accepts it as-is (overwrite), or typing replaces it
+        # outright to save under a different name.
+        input_widget.select_all()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.dismiss(event.value.strip() or None)
@@ -41,29 +50,52 @@ class NameModal(ModalScreen[str | None]):
 
 
 class PresetListModal(ModalScreen[str | None]):
+    """
+    Browse saved presets. Enter loads and closes; 'd' deletes the
+    highlighted preset without closing, so several can be removed in one
+    pass; Escape cancels.
+    """
+
     def __init__(self, names: list[str]):
         super().__init__()
-        self.names = names
+        self.names = list(names)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="preset-list-box"):
-            yield Label("Load preset (enter=load, d=delete, esc=cancel)")
-            lv = ListView(id="preset-list")
-            yield lv
+            yield Label("Load preset  (enter=load, d=delete, esc=cancel)")
+            yield ListView(id="preset-list")
 
     async def on_mount(self) -> None:
+        await self._populate()
+
+    async def _populate(self) -> None:
         lv = self.query_one(ListView)
+        await lv.clear()
         for n in self.names:
             item = ListItem(Label(n))
             item.preset_name = n
             await lv.append(item)
+        if self.names:
+            lv.index = 0
 
     async def on_list_view_selected(self, event: ListView.Selected) -> None:
         self.dismiss(getattr(event.item, "preset_name", None))
 
-    def on_key(self, event) -> None:
+    async def on_key(self, event) -> None:
         if event.key == "escape":
             self.dismiss(None)
+        elif event.key == "d":
+            lv = self.query_one(ListView)
+            item = lv.highlighted_child
+            name = getattr(item, "preset_name", None) if item else None
+            if not name:
+                return
+            await asyncio.to_thread(presets.delete_preset, name)
+            self.names.remove(name)
+            if not self.names:
+                self.dismiss(None)
+                return
+            await self._populate()
 
 
 class DeviceListModal(ModalScreen[tuple | None]):
@@ -134,6 +166,7 @@ class EqtApp(App):
         super().__init__()
         self.bands = presets.default_bands()
         self.current_preset_name: str | None = None
+        self._saved_snapshot: list[tuple[float, float]] | None = None
         self._apply_timer = None
 
     def compose(self) -> ComposeResult:
@@ -144,22 +177,45 @@ class EqtApp(App):
         yield Static("", id="status-row")
         yield Static(
             "[dim]←/→ band  ↑/↓ ±0.5dB  PgUp/PgDn ±3dB  0 reset band  Shift+R reset all  "
-            "s save  l load  g per-device[/dim]",
+            "s save  l load/delete  g per-device[/dim]",
             id="hints",
         )
         yield Footer()
 
     async def on_mount(self) -> None:
         presets.ensure_service_running()
+        # Resume the live working state from last time, if any -- edits
+        # are never lost between runs even if never explicitly saved.
+        if await asyncio.to_thread(presets.preset_exists, presets.LIVE_PRESET_NAME):
+            restored = await asyncio.to_thread(presets.load_preset_from_file, presets.LIVE_PRESET_NAME)
+            self.bands.clear()
+            self.bands.extend(restored)
+            self.query_one(GraphicEqualizer).bands = self.bands
+            self.query_one(GraphicEqualizer).refresh()
+        else:
+            await asyncio.to_thread(presets.save_preset, presets.LIVE_PRESET_NAME, self.bands)
+        await asyncio.to_thread(presets.apply_preset_cli, presets.LIVE_PRESET_NAME)
         self.update_status()
 
     def update_status(self) -> None:
         eq = self.query_one(GraphicEqualizer)
         band = self.bands[eq.selected]
-        preset_label = self.current_preset_name or "(unsaved)"
+        if self.current_preset_name:
+            preset_label = f"{self.current_preset_name}{'' if self._matches_current_preset() else ' (modified)'}"
+        else:
+            preset_label = "(unsaved)"
         self.query_one("#status-row", Static).update(
             f"Band: {_freq_label(band.frequency)}Hz   Gain: {band.gain:+.1f} dB   Preset: {preset_label}"
         )
+
+    def _matches_current_preset(self) -> bool:
+        # Compared against an in-memory snapshot taken at save/load time,
+        # not re-read from disk -- this runs on every gain adjustment via
+        # update_status(), and hitting disk that often would reintroduce
+        # the same per-keystroke latency the apply-debounce above fixes.
+        if self._saved_snapshot is None:
+            return False
+        return self._saved_snapshot == [(b.frequency, b.gain) for b in self.bands]
 
     @work(thread=True, exclusive=True, group="apply-live")
     def _apply_live_now(self) -> None:
@@ -167,10 +223,13 @@ class EqtApp(App):
         # `easyeffects --load-preset`, which takes on the order of 100ms.
         # Calling it directly on the event loop would block input handling
         # and rendering for that long on every single adjustment.
-        name = self.current_preset_name or "_eqt_live"
+        # Always the dedicated live slot -- never the named preset last
+        # loaded or saved. Loading a saved preset is a starting point for
+        # further editing, not a file that further editing is allowed to
+        # mutate; only the explicit Save action touches a named file.
         try:
-            presets.save_preset(name, self.bands)
-            presets.apply_preset_cli(name)
+            presets.save_preset(presets.LIVE_PRESET_NAME, self.bands)
+            presets.apply_preset_cli(presets.LIVE_PRESET_NAME)
         except Exception as e:
             self.call_from_thread(self.notify, f"Apply failed: {e}", severity="error")
 
@@ -223,12 +282,21 @@ class EqtApp(App):
 
     @work
     async def action_save_preset(self) -> None:
-        name = await self.push_screen_wait(NameModal("Save preset as:"))
+        # Pre-filled with the currently loaded preset's name: pressing
+        # Enter immediately re-saves over it (an explicit overwrite,
+        # requested by name and confirmed by the keypress), while typing
+        # a different name saves a new, separate preset instead. Live
+        # editing never reaches this path on its own -- only this action
+        # writes to a named preset file.
+        name = await self.push_screen_wait(
+            NameModal("Save preset as:", default=self.current_preset_name or "")
+        )
         if not name:
             return
         await asyncio.to_thread(presets.save_preset, name, self.bands)
         await asyncio.to_thread(presets.apply_preset_cli, name)
         self.current_preset_name = name
+        self._saved_snapshot = [(b.frequency, b.gain) for b in self.bands]
         self.update_status()
         self.notify(f"Saved preset '{name}'")
 
@@ -247,8 +315,13 @@ class EqtApp(App):
         self.query_one(GraphicEqualizer).bands = self.bands
         self.query_one(GraphicEqualizer).refresh()
         self.current_preset_name = chosen
+        self._saved_snapshot = [(b.frequency, b.gain) for b in self.bands]
         self.update_status()
-        await asyncio.to_thread(presets.apply_preset_cli, chosen)
+        # Mirror the loaded preset into the live slot so what's actually
+        # playing matches what's shown -- the named file itself is not
+        # touched again until an explicit Save.
+        await asyncio.to_thread(presets.save_preset, presets.LIVE_PRESET_NAME, self.bands)
+        await asyncio.to_thread(presets.apply_preset_cli, presets.LIVE_PRESET_NAME)
         self.notify(f"Loaded preset '{chosen}'")
 
     @work
