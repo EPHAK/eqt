@@ -1,11 +1,11 @@
 """
 Output device listing + EasyEffects per-device autoload management.
 
-Autoload schema confirmed from EasyEffects' own generated files convention
-(device / device-description / device-profile / preset-name fields, stored
-at $EE_DATA/autoload/<channel>/<device_node>:<port_name>.json) -- this is
-EasyEffects' own native "apply this preset automatically when this device
-is active" feature, not something reimplemented here.
+Uses EasyEffects' own autoload mechanism: a JSON file per device at
+$EE_DATA/autoload/<channel>/<device_node>:<port_name>.json with
+device / device-description / device-profile / preset-name fields.
+EasyEffects applies the matching preset automatically whenever that
+device becomes active.
 """
 from __future__ import annotations
 

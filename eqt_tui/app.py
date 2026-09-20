@@ -121,10 +121,9 @@ class EqtApp(App):
         Binding("pageup", "gain_up_coarse", "+3dB"),
         Binding("pagedown", "gain_down_coarse", "-3dB"),
         Binding("0", "reset_band", "Reset band"),
-        # "shift+r" never fires from a real terminal -- terminals encode
-        # Shift on a printable letter as the uppercase character itself
-        # ("R"), not a separate modifier; confirmed live, a real
-        # keypress here did nothing while the app was running.
+        # Terminals encode Shift on a printable letter as the uppercase
+        # character itself ("R"), not a separate modifier, so this binds
+        # to "R" rather than "shift+r".
         Binding("R", "reset_all", "Reset all"),
         Binding("s", "save_preset", "Save"),
         Binding("l", "load_preset", "Load"),
@@ -164,12 +163,10 @@ class EqtApp(App):
 
     @work(thread=True, exclusive=True, group="apply-live")
     def _apply_live_now(self) -> None:
-        # Runs in a worker thread -- confirmed this was the real cause of
-        # "slow and unresponsive": subprocess.run() previously ran directly
-        # on the event loop via a plain `await`, so Textual couldn't
-        # process input or redraw for the ~130ms of every single apply,
-        # and every keypress (including auto-repeat) triggered one. Moving
-        # it off-thread stops it from ever blocking the UI.
+        # Runs in a worker thread: applying a preset shells out to
+        # `easyeffects --load-preset`, which takes on the order of 100ms.
+        # Calling it directly on the event loop would block input handling
+        # and rendering for that long on every single adjustment.
         name = self.current_preset_name or "_eqt_live"
         try:
             presets.save_preset(name, self.bands)

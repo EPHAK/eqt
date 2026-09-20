@@ -1,24 +1,22 @@
 """
-EasyEffects preset (equalizer) file management, built against the real
-current (Qt, v8+) source -- verified directly from
-src/equalizer_preset.cpp and src/presets_manager.cpp on the wwmm/easyeffects
-GitHub repo, not from community docs (which turned out to describe an
-older/GTK-era schema in places -- e.g. plugins_order entries are
-"<plugin>#<instance>", not bare plugin names).
+EasyEffects preset (equalizer) file management, targeting the Qt (v8+)
+preset schema as implemented in src/equalizer_preset.cpp and
+src/presets_manager.cpp upstream (wwmm/easyeffects). Older community
+preset examples use a different schema in places -- notably bare plugin
+names in plugins_order rather than "<plugin>#<instance>" -- and are not
+compatible with this format.
 
-Confirmed real facts this module relies on:
-  - Presets live at ~/.local/share/easyeffects/<channel>/<name>.json
-    (channel is "output" or "input") -- confirmed by inspecting the
-    actual XDG data directory EasyEffects created on install.
+Schema notes:
+  - Presets live at ~/.local/share/easyeffects/<channel>/<name>.json,
+    where channel is "output" or "input".
   - Top-level shape: json[channel]["blocklist"], json[channel]["plugins_order"]
-    (list of "<plugin>#<instance>" strings), and json[channel][instance_name]
+    (a list of "<plugin>#<instance>" strings), and json[channel][instance_name]
     holding that plugin's own settings.
-  - Per equalizer_preset.cpp's `load_channel`, any band field not present
-    in the JSON falls back to EasyEffects' own default for that field
-    (nlohmann::json::value(key, default) pattern) -- so a preset only
-    needs to specify "frequency" and "gain" per band; type/mode/slope/
-    width/mute/solo can be omitted and will use sane defaults (Bell
-    filter, standard IIR mode, x1 slope).
+  - Per equalizer_preset.cpp's `load_channel`, any band field absent from
+    the JSON falls back to EasyEffects' own default for that field, so a
+    preset only needs to specify "frequency" and "gain" per band;
+    type/mode/slope/width/mute/solo may be omitted and default to a Bell
+    filter, standard IIR mode, and x1 slope.
   - `load` always loads both "left" and "right" regardless of
     split-channels, so both must be present with equal values for a
     normal (non-split) stereo EQ.

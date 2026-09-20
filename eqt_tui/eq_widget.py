@@ -33,13 +33,11 @@ class GraphicEqualizer(Widget):
 
         bar_width = 7
         segments: list[Segment] = []
-        center = height / 2.0  # 0dB sits here; positive gain fills upward from
-        # it, negative gain fills downward -- a proper bipolar bar, not a
-        # bottom-up one. The earlier version filled from the bottom of the
-        # widget for the *entire* -24..+24 range, which meant 0dB (the
-        # midpoint) rendered as a totally empty column instead of a
-        # centered baseline, and negative gain had no visual distinction
-        # from 0 at all -- both confirmed real bugs, not just a request.
+        # 0dB sits at the vertical center of the widget: positive gain
+        # fills upward from it, negative gain fills downward. This is a
+        # bipolar bar, not a bottom-up one -- gain is drawn relative to
+        # 0dB, not relative to GAIN_MIN.
+        center = height / 2.0
 
         row_from_bottom = height - 1 - y
         row_lo, row_hi = float(row_from_bottom), float(row_from_bottom + 1)
