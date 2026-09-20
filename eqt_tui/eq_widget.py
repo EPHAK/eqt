@@ -33,38 +33,50 @@ class GraphicEqualizer(Widget):
 
         bar_width = 7
         segments: list[Segment] = []
-        zero_row = height // 2  # row index for the 0dB baseline
+        center = height / 2.0  # 0dB sits here; positive gain fills upward from
+        # it, negative gain fills downward -- a proper bipolar bar, not a
+        # bottom-up one. The earlier version filled from the bottom of the
+        # widget for the *entire* -24..+24 range, which meant 0dB (the
+        # midpoint) rendered as a totally empty column instead of a
+        # centered baseline, and negative gain had no visual distinction
+        # from 0 at all -- both confirmed real bugs, not just a request.
+
+        row_from_bottom = height - 1 - y
+        row_lo, row_hi = float(row_from_bottom), float(row_from_bottom + 1)
 
         for i, band in enumerate(self.bands):
             is_selected = i == self.selected
-            frac = (band.gain - GAIN_MIN) / (GAIN_MAX - GAIN_MIN)  # 0..1
-            # bar height in eighths of a cell, symmetric around the middle row
-            total_eighths = int(round(frac * height * 8)) - height * 4
-            filled_rows_from_bottom = total_eighths / 8.0
+            gain = band.gain
 
-            row_from_bottom = height - 1 - y
-            cell_value = filled_rows_from_bottom - row_from_bottom  # how "full" this cell is, can be negative/large
-
-            base_color = "cyan" if not is_selected else "yellow"
-            if band.gain == 0:
-                base_color = "grey50" if not is_selected else "yellow"
-            elif band.gain > 0:
-                base_color = "green" if not is_selected else "yellow"
+            if gain >= 0:
+                extent = (gain / GAIN_MAX) * center if GAIN_MAX else 0.0
+                fill_lo, fill_hi = center, center + extent
             else:
-                base_color = "red" if not is_selected else "yellow"
+                extent = (-gain / -GAIN_MIN) * center if GAIN_MIN else 0.0
+                fill_lo, fill_hi = center - extent, center
 
-            style = Style(color=base_color, bold=is_selected)
+            overlap = max(0.0, min(row_hi, fill_hi) - max(row_lo, fill_lo))
+            cell_value = max(0.0, min(1.0, overlap))
+
+            if gain == 0:
+                base_color = "grey50"
+            elif gain > 0:
+                base_color = "green"
+            else:
+                base_color = "red"
+            style = Style(color=("yellow" if is_selected else base_color), bold=is_selected)
 
             if cell_value >= 1:
                 ch = BAR_CHARS[8]
             elif cell_value <= 0:
                 ch = " "
             else:
-                idx = max(0, min(8, int(round(cell_value * 8))))
+                idx = max(1, min(8, int(round(cell_value * 8))))
                 ch = BAR_CHARS[idx]
 
-            # 0dB baseline marker when the bar itself doesn't reach here
-            if y == zero_row and ch == " ":
+            # 0dB baseline marker on whichever row actually contains the
+            # center line, so it's visible even when nothing is filled.
+            if row_lo <= center < row_hi and ch == " ":
                 ch = "─"
                 style = Style(color="grey37")
 

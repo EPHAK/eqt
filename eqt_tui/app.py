@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -105,7 +107,7 @@ class EqtApp(App):
     }
     #preset-list, #device-list { height: 10; }
     NameModal, PresetListModal, DeviceListModal { align: center middle; }
-    GraphicEqualizer { height: 16; border: solid $accent; }
+    GraphicEqualizer { height: 1fr; min-height: 12; border: solid $accent; }
     #freq-row { height: 1; }
     #status-row { height: 1; padding: 0 1; }
     """
@@ -119,7 +121,11 @@ class EqtApp(App):
         Binding("pageup", "gain_up_coarse", "+3dB"),
         Binding("pagedown", "gain_down_coarse", "-3dB"),
         Binding("0", "reset_band", "Reset band"),
-        Binding("shift+r", "reset_all", "Reset all"),
+        # "shift+r" never fires from a real terminal -- terminals encode
+        # Shift on a printable letter as the uppercase character itself
+        # ("R"), not a separate modifier; confirmed live, a real
+        # keypress here did nothing while the app was running.
+        Binding("R", "reset_all", "Reset all"),
         Binding("s", "save_preset", "Save"),
         Binding("l", "load_preset", "Load"),
         Binding("g", "assign_device", "Per-device"),
@@ -129,6 +135,7 @@ class EqtApp(App):
         super().__init__()
         self.bands = presets.default_bands()
         self.current_preset_name: str | None = None
+        self._apply_timer = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -155,13 +162,29 @@ class EqtApp(App):
             f"Band: {_freq_label(band.frequency)}Hz   Gain: {band.gain:+.1f} dB   Preset: {preset_label}"
         )
 
-    async def _apply_live(self) -> None:
+    @work(thread=True, exclusive=True, group="apply-live")
+    def _apply_live_now(self) -> None:
+        # Runs in a worker thread -- confirmed this was the real cause of
+        # "slow and unresponsive": subprocess.run() previously ran directly
+        # on the event loop via a plain `await`, so Textual couldn't
+        # process input or redraw for the ~130ms of every single apply,
+        # and every keypress (including auto-repeat) triggered one. Moving
+        # it off-thread stops it from ever blocking the UI.
         name = self.current_preset_name or "_eqt_live"
         try:
             presets.save_preset(name, self.bands)
             presets.apply_preset_cli(name)
         except Exception as e:
-            self.notify(f"Apply failed: {e}", severity="error")
+            self.call_from_thread(self.notify, f"Apply failed: {e}", severity="error")
+
+    def _schedule_apply(self) -> None:
+        # Debounced: rapid key-repeat (holding an arrow key) would otherwise
+        # queue a subprocess call per keystroke. Only the last adjustment
+        # in a burst actually gets written/applied, ~120ms after input
+        # goes quiet -- the visual bars still update on every keypress.
+        if self._apply_timer is not None:
+            self._apply_timer.stop()
+        self._apply_timer = self.set_timer(0.12, self._apply_live_now)
 
     def action_move_left(self) -> None:
         self.query_one(GraphicEqualizer).move_selection(-1)
@@ -171,64 +194,64 @@ class EqtApp(App):
         self.query_one(GraphicEqualizer).move_selection(1)
         self.update_status()
 
-    async def action_gain_up(self) -> None:
+    def action_gain_up(self) -> None:
         self.query_one(GraphicEqualizer).adjust_gain(0.5)
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
-    async def action_gain_down(self) -> None:
+    def action_gain_down(self) -> None:
         self.query_one(GraphicEqualizer).adjust_gain(-0.5)
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
-    async def action_gain_up_coarse(self) -> None:
+    def action_gain_up_coarse(self) -> None:
         self.query_one(GraphicEqualizer).adjust_gain(3.0)
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
-    async def action_gain_down_coarse(self) -> None:
+    def action_gain_down_coarse(self) -> None:
         self.query_one(GraphicEqualizer).adjust_gain(-3.0)
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
-    async def action_reset_band(self) -> None:
+    def action_reset_band(self) -> None:
         self.query_one(GraphicEqualizer).reset_band()
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
-    async def action_reset_all(self) -> None:
+    def action_reset_all(self) -> None:
         self.query_one(GraphicEqualizer).reset_all()
         self.update_status()
-        await self._apply_live()
+        self._schedule_apply()
 
     @work
     async def action_save_preset(self) -> None:
         name = await self.push_screen_wait(NameModal("Save preset as:"))
         if not name:
             return
-        presets.save_preset(name, self.bands)
-        presets.apply_preset_cli(name)
+        await asyncio.to_thread(presets.save_preset, name, self.bands)
+        await asyncio.to_thread(presets.apply_preset_cli, name)
         self.current_preset_name = name
         self.update_status()
         self.notify(f"Saved preset '{name}'")
 
     @work
     async def action_load_preset(self) -> None:
-        names = presets.list_presets()
+        names = await asyncio.to_thread(presets.list_presets)
         if not names:
             self.notify("No saved presets yet")
             return
         chosen = await self.push_screen_wait(PresetListModal(names))
         if not chosen:
             return
-        loaded_bands = presets.load_preset_from_file(chosen)
+        loaded_bands = await asyncio.to_thread(presets.load_preset_from_file, chosen)
         self.bands.clear()
         self.bands.extend(loaded_bands)
         self.query_one(GraphicEqualizer).bands = self.bands
         self.query_one(GraphicEqualizer).refresh()
         self.current_preset_name = chosen
         self.update_status()
-        presets.apply_preset_cli(chosen)
+        await asyncio.to_thread(presets.apply_preset_cli, chosen)
         self.notify(f"Loaded preset '{chosen}'")
 
     @work
@@ -237,7 +260,7 @@ class EqtApp(App):
         if not name:
             self.notify("Save the preset first (s) before assigning it to a device")
             return
-        devs = devices.list_output_devices()
+        devs = await asyncio.to_thread(devices.list_output_devices)
         result = await self.push_screen_wait(DeviceListModal(devs))
         if not result:
             return
@@ -245,10 +268,10 @@ class EqtApp(App):
         if device is None:
             return
         if action == "set":
-            devices.set_autoload(device, name)
+            await asyncio.to_thread(devices.set_autoload, device, name)
             self.notify(f"'{name}' will now autoload when {device.description} is active")
         elif action == "clear":
-            devices.clear_autoload(device)
+            await asyncio.to_thread(devices.clear_autoload, device)
             self.notify(f"Cleared autoload for {device.description}")
 
 
