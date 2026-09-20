@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -13,6 +14,22 @@ from . import presets
 from . import devices
 from .eq_widget import GraphicEqualizer
 from .presets import DEFAULT_FREQUENCIES
+
+
+STATE_DIR = Path.home() / ".local" / "state" / "eqt"
+THEME_FILE = STATE_DIR / "theme"
+
+
+def _load_saved_theme() -> str | None:
+    try:
+        return THEME_FILE.read_text().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def _save_theme(name: str) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    THEME_FILE.write_text(name)
 
 
 def _freq_label(f: float) -> str:
@@ -182,7 +199,13 @@ class EqtApp(App):
         )
         yield Footer()
 
+    def watch_theme(self, old_theme: str, new_theme: str) -> None:
+        _save_theme(new_theme)
+
     async def on_mount(self) -> None:
+        saved_theme = _load_saved_theme()
+        if saved_theme and saved_theme in self.available_themes:
+            self.theme = saved_theme
         presets.ensure_service_running()
         # Resume the live working state from last time, if any -- edits
         # are never lost between runs even if never explicitly saved.
