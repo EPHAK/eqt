@@ -83,4 +83,4 @@ slope, and other parameters fall back to EasyEffects' own defaults
 
 ## License
 
-MIT
+[MIT](LICENSE)
