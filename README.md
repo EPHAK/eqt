@@ -7,11 +7,11 @@ arrow-key adjustment, named presets, and per-device autoloading.
 ## Features
 
 - Live 10-band graphic equalizer (32 Hz – 16 kHz), rendered as vertical
-  bars with a centered 0 dB baseline — positive gain fills upward,
+  bars with a centered 0 dB baseline: positive gain fills upward,
   negative gain fills downward
 - Fine (±0.5 dB) and coarse (±3 dB) adjustment, per-band and global reset
 - Save, load, and delete named presets. Live editing never overwrites a
-  saved preset — only the Save action does, and only when you name it —
+  saved preset; only the Save action does, and only when you name it,
   so you can freely experiment on top of a loaded preset and reload it
   to discard changes, the same way a game save works
 - Per-device autoload: assign a preset to a specific output device using
@@ -35,7 +35,7 @@ eqt
 | `0` | Reset selected band |
 | `Shift+R` | Reset all bands |
 | `s` | Save preset (name defaults to the currently loaded preset, selected for easy overwrite or replacement) |
-| `l` | Open the preset list — `Enter` to load, `d` to delete the highlighted preset |
+| `l` | Open the preset list (`Enter` to load, `d` to delete the highlighted preset) |
 | `g` | Assign current preset to a device (autoload) |
 | `q` | Quit |
 
@@ -68,7 +68,7 @@ Ensure `~/.local/bin` is on your `PATH`.
 `easyeffects --load-preset`. Per-device assignment writes to
 EasyEffects' own autoload directory
 (`~/.local/share/easyeffects/autoload/output/`), which EasyEffects
-reads natively — `eqt` does not reimplement audio routing or profile
+reads natively. `eqt` does not reimplement audio routing or profile
 switching itself.
 
 Live editing always applies through a dedicated internal preset
