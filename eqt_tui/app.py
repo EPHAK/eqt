@@ -354,7 +354,20 @@ class EqtApp(App):
         if not name:
             self.notify("Save the preset first (s) before assigning it to a device")
             return
-        devs = await asyncio.to_thread(devices.list_output_devices)
+        try:
+            devs = await asyncio.to_thread(devices.list_output_devices)
+        except FileNotFoundError:
+            self.notify("pactl not found; cannot list output devices", severity="error")
+            return
+        except Exception as e:
+            # pactl exits non-zero when no PulseAudio/pipewire-pulse server
+            # is reachable, which is a plain environment problem, not a
+            # reason to take the app down from inside a worker.
+            self.notify(f"could not list output devices: {e}", severity="error")
+            return
+        if not devs:
+            self.notify("no output devices found")
+            return
         result = await self.push_screen_wait(DeviceListModal(devs))
         if not result:
             return
