@@ -371,11 +371,20 @@ class EqtApp(App):
 
 def main():
     import argparse
+    import sys
 
     parser = argparse.ArgumentParser(
         description="eqt -- graphic equalizer TUI on EasyEffects (run with no arguments for the interactive UI)"
     )
     parser.parse_args()  # no real flags yet; this just makes -h/--help behave instead of launching the TUI
+
+    # Check before Textual takes over the terminal: failing afterwards
+    # paints a traceback over a half-drawn UI and still exits 0.
+    if not presets.easyeffects_installed():
+        print("eqt: EasyEffects is not installed, or not on PATH.", file=sys.stderr)
+        print("eqt is a front-end for it; install easyeffects first.", file=sys.stderr)
+        sys.exit(1)
+
     EqtApp().run()
 
 

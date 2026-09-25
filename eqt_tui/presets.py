@@ -24,6 +24,7 @@ Schema notes:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,8 +134,20 @@ def apply_preset_cli(name: str) -> None:
         raise RuntimeError(f"easyeffects --load-preset failed: {result.stderr.strip() or result.stdout.strip()}")
 
 
+def easyeffects_installed() -> bool:
+    """Whether the EasyEffects binary is on PATH at all."""
+    return shutil.which("easyeffects") is not None
+
+
 def ensure_service_running() -> None:
-    """Start EasyEffects headless if it isn't already running."""
+    """Start EasyEffects headless if it isn't already running.
+
+    A missing binary is the caller's problem to report, not a traceback
+    from deep inside a subprocess call, so this is a no-op when
+    EasyEffects isn't installed.
+    """
+    if not easyeffects_installed():
+        return
     check = subprocess.run(["pgrep", "-f", "easyeffects.*service-mode"], capture_output=True)
     if check.returncode != 0:
         subprocess.Popen(
