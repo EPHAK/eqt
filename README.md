@@ -43,28 +43,32 @@ eqt
 
 - Linux with PipeWire and [EasyEffects](https://github.com/wwmm/easyeffects) installed
 - Python 3.10+
-- `python-textual`
 
-```bash
-pip install textual
-```
-
-`eqt` starts EasyEffects in service mode automatically if it isn't
-already running.
+The `textual` dependency is installed automatically by the commands
+below. `eqt` starts EasyEffects in service mode automatically if it
+isn't already running.
 
 ## Installation
 
 ```bash
-git clone https://github.com/EPHAK/eqt.git
-ln -s "$(pwd)/eqt/eqt" ~/.local/bin/eqt
+pipx install git+https://github.com/EPHAK/eqt.git
 ```
 
-Ensure `~/.local/bin` is on your `PATH`.
+Or from a clone, for development:
+
+```bash
+git clone https://github.com/EPHAK/eqt.git
+cd eqt
+pip install -e ".[dev]"
+```
+
+Either way this puts an `eqt` command on your `PATH`.
 
 ## How it works
 
 `eqt` writes and loads standard EasyEffects preset files
-(`~/.local/share/easyeffects/output/<name>.json`) and applies them via
+(`~/.local/share/easyeffects/output/<name>.json`, or under
+`$XDG_DATA_HOME` when set) and applies them via
 `easyeffects --load-preset`. Per-device assignment writes to
 EasyEffects' own autoload directory
 (`~/.local/share/easyeffects/autoload/output/`), which EasyEffects

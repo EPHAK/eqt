@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eqt"
+version = "0.1.0"
+description = "Terminal graphic equalizer for PipeWire/EasyEffects with live bars and per-device presets"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.80",
+]
+
+[project.urls]
+Homepage = "https://github.com/EPHAK/eqt"
+
+[project.scripts]
+eqt = "eqt_tui.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["eqt_tui"]

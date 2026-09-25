@@ -28,7 +28,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-EE_DATA = Path.home() / ".local" / "share" / "easyeffects"
+from . import xdg
+
+EE_DATA = xdg.data_home() / "easyeffects"
 
 # Classic 10-band graphic EQ layout (32Hz-16kHz, one octave-ish spacing).
 DEFAULT_FREQUENCIES = [32.0, 64.0, 128.0, 256.0, 512.0, 1000.0, 2000.0, 4000.0, 8000.0, 16000.0]

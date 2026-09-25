@@ -12,11 +12,12 @@ from textual.widgets import Header, Footer, Static, Input, Label, ListView, List
 
 from . import presets
 from . import devices
+from . import xdg
 from .eq_widget import GraphicEqualizer
 from .presets import DEFAULT_FREQUENCIES
 
 
-STATE_DIR = Path.home() / ".local" / "state" / "eqt"
+STATE_DIR = xdg.state_home() / "eqt"
 THEME_FILE = STATE_DIR / "theme"
 
 
