@@ -4,6 +4,8 @@ A graphic equalizer for the terminal, built on top of
 [EasyEffects](https://github.com/wwmm/easyeffects). Live 10-band bars,
 arrow-key adjustment, named presets, and per-device autoloading.
 
+![demo](demo.gif)
+
 ## Features
 
 - Live 10-band graphic equalizer (32 Hz – 16 kHz), rendered as vertical
